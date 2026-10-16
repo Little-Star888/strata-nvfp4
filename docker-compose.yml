@@ -1,0 +1,71 @@
+# docker compose for the cn deployment (deploy/v0.1.42-nvfp4.2-cn).
+# One stack serves every family: the four NVFP4 packs and the upstream GGUF
+# tiers (qwen / unsloth / swift / coder). Every choice is an env var in .env
+# (copy .env.example). Requires compose v2 (`gpus: all` needs v2.30+).
+#
+# Switching models: edit .env, then `docker compose up -d` (recreates the
+# container; model files in ./models are reused, never re-downloaded).
+# REINSTALL=1 is one-shot: only for the up that changes an installed model's
+# settings (context, vision, censorship default), remove it again after.
+
+services:
+  strata:
+    build:
+      context: .
+      args: { CUDA_ARCHITECTURES: "120" }   # RTX 50 only; the engine is fat otherwise
+    image: strata-nvfp4:v0.1.44.1-nvfp4.2-cn.1
+    container_name: strata-nvfp4
+    restart: unless-stopped
+    gpus: all
+    ulimits:
+      memlock: -1          # the expert arena locks pages in RAM
+    ports:
+      - "${HOST_PORT:-8089}:8080"   # LAN by default: keep API_KEY set in .env (AGENTS.md)
+    environment:
+      FAMILY: ${FAMILY:-qwen}          # empty/absent = upstream qwen family; NVFP4 tiers set it explicitly
+      MODEL: ${MODEL:-NVFP4}        # NVFP4 families take no --model; GGUF tiers need MODEL=IQ3_S etc.
+      CONTEXT: ${CONTEXT:-262144}
+      VISION: ${VISION:-yes}
+      UNCENSORED: ${UNCENSORED:-on} # orca-free censorship switch (qwen-nvfp4-gptq/mix/q8/qwen/unsloth)
+      REINSTALL: ${REINSTALL:-}
+      API_KEY: ${API_KEY:-}
+      STRATA_SOURCE: ${STRATA_SOURCE:-modelscope}
+      PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
+      STRATA_ADAPT_OVERLAP: ${STRATA_ADAPT_OVERLAP:-}
+      STRATA_MMQ_KQ: ${STRATA_MMQ_KQ:-}                  # K-quant prompt kernels (UD-Q4/Q5/Q6_K_XL); opt-in
+      STRATA_ROUTE_TAIL_SKIP: ${STRATA_ROUTE_TAIL_SKIP:-}
+      GPU: ${GPU:-}
+      GPUS: ${GPUS:-}
+      LOW_RAM: ${LOW_RAM:-auto}
+      HOST: ${HOST:-0.0.0.0}
+      PORT: ${PORT:-8080}
+    entrypoint:
+      - bash
+      - -c
+      - |-
+        set -e; cd /opt/strata
+        case "$$FAMILY" in
+          qwen-nvfp4-gptq|orca-nvfp4|qwen-nvidia-nvfp4|qwen-nvfp4-mix|qwen-q8) NVFP4=1 ;;
+          *) NVFP4= ;;
+        esac
+        CFG="/data/config/strata-$$FAMILY-$$MODEL.json"
+        if [ "$$FAMILY" = "qwen" ]; then CFG="/data/config/strata-$$(printf '%s' "$$MODEL" | tr 'A-Z' 'a-z').json"; fi
+        CFG_SRC="/opt/strata/$$(basename "$$CFG")"
+        mkdir -p /data/config
+        if [ ! -f "$$CFG" ] || [ "$${REINSTALL:-0}" = "1" ]; then
+          FAMILY_CHOSEN="$${FAMILY:-qwen}"; [ -z "$$FAMILY_CHOSEN" ] && FAMILY_CHOSEN=qwen
+        set -- --setup --yes --family "$$FAMILY_CHOSEN" --context "$${CONTEXT:-262144}" --vision "$${VISION:-no}" \
+            --data-dir /data --host "$${HOST:-0.0.0.0}" --port "$${PORT:-8080}" --no-start --low-ram auto \
+            --api-key "$${API_KEY:-}"
+          if [ -z "$$NVFP4" ]; then set -- "$$@" --model "$$MODEL"; fi
+          [ -n "$${UNCENSORED:-}" ] && set -- "$$@" --uncensored "$$UNCENSORED"
+          .venv/bin/python setup.py "$$@"
+          CFG_SRC="$$(ls -t /opt/strata/strata-*.json | head -1)"
+          cp "$$CFG_SRC" "$$CFG"
+        fi
+        rm -f "/opt/strata/strata-*.json" 2>/dev/null || true
+        ln -sfn "$$CFG" "$$CFG_SRC"
+        exec .venv/bin/python setup.py --port "$${PORT:-8080}"
+    volumes:
+      - ./models:/data      # host-side data dir: every pack, config and bench result lives here (git-ignored)
+

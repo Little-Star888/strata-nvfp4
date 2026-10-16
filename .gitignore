@@ -61,3 +61,6 @@ build-vision-cuda12.bat
 
 /.ccache/
 /.rocm-win/
+
+# cn: the deployment secrets (API key) - never commit
+/.env
