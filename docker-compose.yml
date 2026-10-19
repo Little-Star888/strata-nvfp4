@@ -1,0 +1,39 @@
+# docker compose for the cn deployment (deploy/v0.2.0-beta-nvfp4-cn, 0.2.0-beta).
+# The 0.2.0 image carries its own entrypoint: an env-driven `strata launch` flow.
+# Everything is under /data (the ./models mount): the GGUF shards in
+# /data/models/unsloth-UD-Q4_K_XL/, the generated configs in /data/config/,
+# and the flow's own state dirs (Strata-data/install/state/home) it creates.
+#
+# First start installs/verifies the model files and writes the config; later
+# starts reuse them. The censorship switch: the vector ships in the image
+# (data/uncensor); after the first start set "uncensored": true once in
+# /data/config/strata-*.json (or ask - we have a one-liner).
+#
+# Old-image env names (REINSTALL/LOW_RAM/STRATA_*) are ignored here; see the
+# entrypoint's warning and docs/DOCKER.md.
+
+services:
+  strata:
+    image: strata-nvfp4:v0.2.0-beta-nvfp4-cn.1
+    container_name: strata-nvfp4
+    restart: unless-stopped
+    gpus: all
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+    shm_size: 2gb
+    stop_grace_period: 2m
+    ports:
+      - "${HOST_PORT:-8089}:8080"
+    environment:
+      MODEL: ${MODEL:-UD-Q4_K_XL}
+      FAMILY: ${FAMILY:-unsloth}
+      MODEL_PATH: ${MODEL_PATH:-/data/models/unsloth-UD-Q4_K_XL}
+      CONTEXT: ${CONTEXT:-524288}
+      KV: ${KV:-int8}
+      VISION: ${VISION:-on}
+      PARALLEL: ${PARALLEL:-}
+      TUNE: ${TUNE:-skip}
+      API_KEY: ${API_KEY:-}
+      PORT: 8080
+    volumes:
+      - ./models:/data
