@@ -15,11 +15,14 @@
 #
 # Plain legacy-builder features only (no heredocs, no --mount). AMD (HIP) and Intel (SYCL) source builds: docs/AMD_HIP.md, docs/INTEL.md.
 
-ARG CUDA_IMAGE=nvidia/cuda:13.0.0-devel-ubuntu24.04
+# cn: the Aliyun mirror of nvidia/cuda 13.0.2 (upstream pins 13.0.0 - patch bump only)
+ARG CUDA_IMAGE=crpi-o3t15cpzlnzh32nn.cn-shanghai.personal.cr.aliyuncs.com/little_star/cuda:13.0.2-devel-ubuntu24.04
 ARG RUNTIME_BASE=ubuntu:24.04
 
 # ---- 1. compile the engine and make its component package
 FROM ${CUDA_IMAGE} AS engine-build
+RUN sed -i 's|archive.ubuntu.com|mirrors.tuna.tsinghua.edu.cn|g; s|security.ubuntu.com|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/ubuntu.sources
+ENV PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1 PATH=/venv/bin:$PATH
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential ca-certificates git libgomp1 libatomic1 python3 python3-pip python3-venv unzip \
@@ -61,6 +64,7 @@ RUN set -e; \
 
 # ---- 2. the Terminal (the release archive, built here)
 FROM ${RUNTIME_BASE} AS terminal
+RUN sed -i 's|archive.ubuntu.com|mirrors.tuna.tsinghua.edu.cn|g; s|security.ubuntu.com|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/ubuntu.sources
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends python3 ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY . /src/
@@ -82,6 +86,7 @@ RUN cd /opt/strata/terminal && STRATA_CONTROL_INSTALL=1 STRATA_INSTALL_DIR=/opt/
 # ---- 3. the runtime image (the same as docker/Dockerfile's, FLAVOR=cuda)
 FROM ${RUNTIME_BASE}
 ARG STRATA_VERSION=dev
+RUN sed -i 's|archive.ubuntu.com|mirrors.tuna.tsinghua.edu.cn|g; s|security.ubuntu.com|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/ubuntu.sources
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends tini ca-certificates libgomp1 libatomic1 libnuma1 zlib1g \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
