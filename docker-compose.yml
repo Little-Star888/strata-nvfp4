@@ -15,6 +15,9 @@
 services:
   strata:
     image: strata-nvfp4:v0.2.0-beta-nvfp4-cn.1
+    build:
+      context: .
+      args: { CUDA_ARCHITECTURES: "120" }   # RTX 50 only; the engine is fat otherwise
     container_name: strata-nvfp4
     restart: unless-stopped
     gpus: all
